@@ -78,6 +78,10 @@ def main():
 
     login(driver, login_url, username, password)
 
+    driver.get(account_url)
+    time.sleep(2)
+    print(f"Landed on: {driver.current_url}")
+
     driver.get(purchase_history_url)
     time.sleep(2)
     print(f"Landed on: {driver.current_url}")
