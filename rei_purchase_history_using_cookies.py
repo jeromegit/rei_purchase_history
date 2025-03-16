@@ -76,7 +76,8 @@ def get_online_purchase_items_in_order(session, purchase_order_id):
     purchase_items = []
     for items in fulfillment_items:
         for item in items:
-            purchase_item = {k: item[k] for k in {'sku', 'name', 'brand', 'price'}}
+            purchase_item = {k: item[k] for k in {'sku', 'name', 'brand', 'totalPrice'}}
+            purchase_item['price'] = purchase_item.pop('totalPrice')
             purchase_item['order_date'] = order_date
             purchase_items.append(purchase_item)
 
@@ -85,7 +86,8 @@ def get_online_purchase_items_in_order(session, purchase_order_id):
 
 def print_purchase_items(purchase_items):
     headers = ["order_date", "brand", "name", "sku", "price"]
-    table_data = [[item.get(key, "") for key in headers] for item in purchase_items]
+    sorted_purchase_items = sorted(purchase_items, key=lambda item: item.get('order_date', ''))
+    table_data = [[item.get(key, "") for key in headers] for item in sorted_purchase_items]
     print(tabulate(table_data, headers=headers, tablefmt="psql"))
 
 
@@ -100,23 +102,28 @@ def get_online_purchases_for_year(session, year):
             print_purchase_items(purchase_items)
 
 
-def get_single_purchase_item(soup, html):
-    sku = html.find('li', {'data-ui': 'product-sku'})
-    if sku:
-        sku_text = sku.text.strip()
-        sku = sku_text.replace('Item #', '').strip()
-        name = soup.select_one('[data-ui="product-title"] a').text.strip()
-        price = soup.select_one('[data-ui="product-total-price"]').text.strip()
-        order_date = soup.select_one('[data-ui="order-date"]').text.strip()
+def get_product_field_in_section(section, product_field_key):
+    product_field_value = section.find('li', attrs={'data-ui': product_field_key}).text.strip()
+
+    return product_field_value
+
+
+def get_single_purchase_item(soup, section):
+    if section:
+        sku = get_product_field_in_section(section, 'product-sku').replace('Item #', '').strip()
+        name = get_product_field_in_section(section, 'product-title')
+        price = get_product_field_in_section(section, 'product-total-price')
     else:
         sku = name = 'n/a'
-        price = soup.select_one('[data-ui="total-value"]').text
-        order_date = html.find('li', {'data-ui': 'order-date'})
+        price = soup.select_one('[data-ui="total-value"]').text.strip()
 
     price = price.replace('$', '')
     brand = 'n/a'
+
+    order_date = soup.select_one('[data-ui="order-date"]').text.strip()
     order_date = convert_date_format(order_date)
-    purchase_item = {'sku': sku, 'name': name, 'brand': brand, 'price': price, 'order-date': order_date}
+
+    purchase_item = {'sku': sku, 'name': name, 'brand': brand, 'price': price, 'order_date': order_date}
 
     return purchase_item
 
@@ -134,7 +141,7 @@ def get_instore_purchase_items_in_order(session, purchase_order_id):
             purchase_item = get_single_purchase_item(soup, section)
             purchase_items.append(purchase_item)
     else:
-        purchase_item = get_single_purchase_item(soup, html)
+        purchase_item = get_single_purchase_item(soup, None)
         purchase_items.append(purchase_item)
 
     return purchase_items
@@ -144,27 +151,36 @@ def get_instore_purchases_for_year(session, year):
     purchase_items_url = f"https://www.rei.com/rest/user/orders?year={year}&includeSkus=true&retailOnly=true"
     json_data = get_json_data_for_url(session, purchase_items_url)
     purchase_order_ids = [order["csaOrderId"] for order in json_data]
-    print(f"{year} {purchase_order_ids}")
+    if purchase_order_ids:
+        all_purchase_items = []
+        for purchase_order_id in purchase_order_ids:
+            purchase_items = get_instore_purchase_items_in_order(session, purchase_order_id)
+            all_purchase_items += purchase_items
 
-    for purchase_order_id in purchase_order_ids:
-        purchase_items = get_instore_purchase_items_in_order(session, purchase_order_id)
-    print_purchase_items(purchase_items)
+        print_purchase_items(all_purchase_items)
+    else:
+        print(f"no purchase in {year}")
 
 
 def get_all_online_purchases(session, years):
+    print_section("ONLINE PURCHASES")
     for year in years:
         get_online_purchases_for_year(session, year)
 
 
 def get_all_instore_purchases(session, years):
+    print_section("IN STORE PURCHASES")
     for year in years:
         get_instore_purchases_for_year(session, year)
 
+def print_section(section_name):
+    heading = '=' * 50
+    print(f"\n{heading} {section_name} {heading}")
 
 if __name__ == "__main__":
     session = get_rei_session()
 
     years = list(range(2016, 2025))
-    # years = list(range(2024, 2025))
-    # get_all_online_purchases(session, years)
+    get_all_online_purchases(session, years)
+
     get_all_instore_purchases(session, years)
