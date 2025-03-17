@@ -1,8 +1,5 @@
 import json
-from dataclasses import dataclass
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Union, Optional
+from datetime import datetime
 
 import browser_cookie3
 import requests
@@ -173,14 +170,16 @@ def get_all_instore_purchases(session, years):
     for year in years:
         get_instore_purchases_for_year(session, year)
 
+
 def print_section(section_name):
     heading = '=' * 50
     print(f"\n{heading} {section_name} {heading}")
 
+
 if __name__ == "__main__":
     session = get_rei_session()
 
-    years = list(range(2016, 2025))
+    years = list(range(2000, 2025))
     get_all_online_purchases(session, years)
 
     get_all_instore_purchases(session, years)
